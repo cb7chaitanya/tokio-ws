@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.75-slim as builder
+FROM docker.io/library/rust:1.75-slim as builder
 WORKDIR /usr/src/app
 COPY . .
 RUN cargo build --release
