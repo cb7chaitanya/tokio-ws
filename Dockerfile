@@ -8,8 +8,9 @@ RUN cargo build --release
 
 # Runtime stage
 FROM debian:bookworm-slim
-
+WORKDIR /usr/local/bin
 COPY --from=builder /usr/src/app/target/release/chat /usr/local/bin/chat
+COPY .env /usr/local/bin/.env
 
 ENV PORT=8080
 EXPOSE 8080
