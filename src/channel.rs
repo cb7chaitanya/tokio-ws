@@ -24,14 +24,6 @@ impl Channel {
             messages: Vec::new(),
         }
     }
-
-    pub fn format_message(&self, msg: &ChatMessage) -> String {
-        format!("{} [{}]: {}", 
-            msg.sender,
-            msg.timestamp.format("%H:%M:%S"),
-            msg.content
-        )
-    }
 }
 
 pub struct ChannelManager {
@@ -57,9 +49,14 @@ impl ChannelManager {
         if let Some(channel) = channels.get_mut(&channel_name) {
             channel.senders.push(sender.clone());
             
-            // Send message history to new user
+            // Send message history to new user with MSG: format
             for msg in &channel.messages {
-                let history_message = channel.format_message(msg);
+                let history_message = format!("MSG:{}:{}:{}:{}", 
+                    channel_name,
+                    msg.sender,
+                    msg.content,
+                    msg.timestamp.format("%H:%M:%S")
+                );
                 sender.send(Message::Text(history_message))
                     .expect("Failed to send message history");
             }

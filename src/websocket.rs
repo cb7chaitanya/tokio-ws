@@ -59,11 +59,16 @@ pub async fn handle_connection(stream: TcpStream, addr: SocketAddr, channel_mana
                         let room_name = parts[0].to_string();
                         let sender_name = parts[1].to_string();
                         let message_text = parts[2].to_string();
+                        let formatted_message = format!("MSG:{}:{}:{}", 
+                            room_name,
+                            sender_name,
+                            message_text
+                        );
                         channel_manager.broadcast_message(
                             room_name,
                             sender_name.clone(),
                             message_text.clone(),
-                            Message::Text(format!("{}: {}", sender_name, message_text))
+                            Message::Text(formatted_message)
                         ).await;
                     }
                 }

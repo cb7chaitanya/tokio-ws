@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Toaster, toast } from 'sonner'
+import { Menu } from 'lucide-react'
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 
 interface Message {
   sender: string
@@ -42,19 +44,39 @@ export default function Chat() {
       return;
     }
 
-    // Parse message with timestamp: "sender [HH:MM:SS]: content"
-    const messageMatch = message.match(/^([^[]+)\s*\[([^\]]+)\]:\s*(.+)$/);
-    console.log('Message match:', messageMatch)
-    if (messageMatch) {
-      const [_, sender, timeStr, content] = messageMatch;
-
+    if (message.startsWith('MSG:')) {
+      const [_, roomName, sender, content] = message.split(':');
+      
       setRooms(prevRooms => {
-        // Find the room by sender's message content if it's history
-        const roomName = currentRoom || prevRooms[0]?.name;
-        if (!roomName) return prevRooms;
-
         const updatedRooms = [...prevRooms];
         const roomIndex = updatedRooms.findIndex(r => r.name === roomName);
+        
+        if (roomIndex === -1) return prevRooms;
+
+        const newMessage = {
+          sender: sender.trim(),
+          content,
+          timestamp: new Date()
+        };
+
+        updatedRooms[roomIndex] = {
+          ...updatedRooms[roomIndex],
+          messages: [...updatedRooms[roomIndex].messages, newMessage]
+        };
+
+        return updatedRooms;
+      });
+      return;
+    }
+
+    // Handle history messages
+    const historyMatch = message.match(/^([^[]+)\s*\[([^\]]+)\]:\s*(.+)$/);
+    if (historyMatch && currentRoom) {
+      const [_, sender, timeStr, content] = historyMatch;
+      
+      setRooms(prevRooms => {
+        const updatedRooms = [...prevRooms];
+        const roomIndex = updatedRooms.findIndex(r => r.name === currentRoom);
         
         if (roomIndex === -1) return prevRooms;
 
@@ -119,7 +141,15 @@ export default function Chat() {
   }
 
   const joinRoom = (roomName: string) => {
+    // First clear any existing messages for this room
+    setRooms(prev => prev.map(room => 
+      room.name === roomName
+        ? { ...room, messages: [] }
+        : room
+    ));
+    
     setCurrentRoom(roomName);
+    
     // Ensure room exists in state
     setRooms(prev => {
       const roomExists = prev.some(r => r.name === roomName);
@@ -128,6 +158,7 @@ export default function Chat() {
       }
       return prev;
     });
+    
     // Send join message after state is updated
     ws?.send(`JOIN_ROOM:${roomName}`);
   }
@@ -135,6 +166,12 @@ export default function Chat() {
   const leaveRoom = () => {
     if (!currentRoom) return
     ws?.send(`LEAVE_ROOM:${currentRoom}`)
+    // Clear messages when leaving room
+    setRooms(prev => prev.map(room => 
+      room.name === currentRoom 
+        ? { ...room, messages: [] }
+        : room
+    ));
     setCurrentRoom('')
   }
 
@@ -149,83 +186,187 @@ export default function Chat() {
   console.log('Current room state:', rooms.find(r => r.name === currentRoom)?.messages);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-gray-800 p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 p-2 sm:p-4 md:p-6">
       <Toaster richColors closeButton position="top-center" />
-      <div className="max-w-6xl mx-auto grid grid-cols-4 gap-4">
-        <Card className="col-span-1">
-          <CardHeader>
-            <CardTitle>Chat Rooms</CardTitle>
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-2 md:gap-6">
+        {/* Sidebar for desktop */}
+        <Card className={`
+          bg-gray-800/50 border-gray-700
+          hidden md:block
+        `}>
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-gray-100 text-xl">Chat Rooms</CardTitle>
+            <p className="text-sm text-gray-400">Join or create a room to start chatting</p>
           </CardHeader>
           <CardContent className="space-y-4">
             <Input
               placeholder="Your username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
+              className="bg-gray-700 border-gray-600 text-gray-100 placeholder:text-gray-400"
             />
             <div className="flex space-x-2">
               <Input
                 placeholder="New room name"
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
+                className="bg-gray-700 border-gray-600 text-gray-100 placeholder:text-gray-400"
               />
-              <Button onClick={createRoom}>Create</Button>
+              <Button 
+                onClick={createRoom}
+                className="bg-blue-600 hover:bg-blue-700 whitespace-nowrap"
+              >
+                Create
+              </Button>
             </div>
-            <ScrollArea className="h-[300px]">
-              {rooms.map((room) => (
-                <Button
-                  key={room.name}
-                  variant={currentRoom === room.name ? "default" : "ghost"}
-                  className="w-full justify-start"
-                  onClick={() => joinRoom(room.name)}
-                >
-                  # {room.name}
-                </Button>
-              ))}
+            <ScrollArea className="h-[calc(100vh-250px)]">
+              <div className="space-y-2">
+                {rooms.map((room) => (
+                  <Button
+                    key={room.name}
+                    variant={currentRoom === room.name ? "default" : "ghost"}
+                    className={`w-full justify-start transition-all ${
+                      currentRoom === room.name 
+                        ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                        : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                    }`}
+                    onClick={() => joinRoom(room.name)}
+                  >
+                    # {room.name}
+                  </Button>
+                ))}
+              </div>
             </ScrollArea>
           </CardContent>
         </Card>
 
-        <Card className="col-span-3">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>{currentRoom || 'Select a room'}</CardTitle>
+        {/* Chat Area */}
+        <Card className={`
+          bg-gray-800/50 border-gray-700
+          col-span-1 md:col-span-3
+        `}>
+          <CardHeader className="flex flex-row items-center justify-between border-b border-gray-700 p-4">
+            <div className="flex items-center space-x-2">
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Menu className="md:hidden h-5 w-5 text-white cursor-pointer" />
+                </SheetTrigger>
+                <SheetContent side="left" className="w-[300px] p-0 bg-gray-800/95 border-gray-700">
+                  <div className="h-full">
+                    <CardHeader className="space-y-1">
+                      <CardTitle className="text-gray-100 text-xl">Chat Rooms</CardTitle>
+                      <p className="text-sm text-gray-400">Join or create a room to start chatting</p>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <Input
+                        placeholder="Your username"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        className="bg-gray-700 border-gray-600 text-gray-100 placeholder:text-gray-400"
+                      />
+                      <div className="flex space-x-2">
+                        <Input
+                          placeholder="New room name"
+                          value={newRoomName}
+                          onChange={(e) => setNewRoomName(e.target.value)}
+                          className="bg-gray-700 border-gray-600 text-gray-100 placeholder:text-gray-400"
+                        />
+                        <Button 
+                          onClick={createRoom}
+                          className="bg-blue-600 hover:bg-blue-700 whitespace-nowrap"
+                        >
+                          Create
+                        </Button>
+                      </div>
+                      <ScrollArea className="h-[calc(100vh-250px)]">
+                        <div className="space-y-2">
+                          {rooms.map((room) => (
+                            <Button
+                              key={room.name}
+                              variant={currentRoom === room.name ? "default" : "ghost"}
+                              className={`w-full justify-start transition-all ${
+                                currentRoom === room.name 
+                                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                  : 'text-gray-300 hover:text-white hover:bg-gray-700'
+                              }`}
+                              onClick={() => joinRoom(room.name)}
+                            >
+                              # {room.name}
+                            </Button>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    </CardContent>
+                  </div>
+                </SheetContent>
+              </Sheet>
+              <CardTitle className="text-gray-100">
+                {currentRoom ? `#${currentRoom}` : 'Select a room'}
+              </CardTitle>
+            </div>
             {currentRoom && (
-              <Button variant="destructive" onClick={leaveRoom}>
+              <Button 
+                variant="destructive" 
+                onClick={leaveRoom}
+                className="bg-red-600 hover:bg-red-700"
+              >
                 Leave Room
               </Button>
             )}
           </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[600px] mb-4">
-              {currentRoom && rooms.find(r => r.name === currentRoom)?.messages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`mb-4 p-3 rounded-lg ${
-                    msg.sender === username
-                      ? 'bg-blue-500 ml-auto mr-2 max-w-[80%]'
-                      : 'bg-gray-700 ml-2 max-w-[80%]'
-                  }`}
-                >
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="font-bold text-sm">{msg.sender}</span>
-                    <span className="text-xs opacity-50">
-                      {msg.timestamp.toLocaleTimeString()}
-                    </span>
+          <CardContent className="p-0 h-[calc(100vh-180px)] flex flex-col">
+            <ScrollArea className="flex-1">
+              <div className="flex flex-col p-4 space-y-4">
+                {currentRoom && rooms.find(r => r.name === currentRoom)?.messages.map((msg, i) => (
+                  <div
+                    key={i}
+                    className={`flex flex-col ${
+                      msg.sender === username ? 'items-end' : 'items-start'
+                    }`}
+                  >
+                    <div
+                      className={`p-3 rounded-lg max-w-[85%] sm:max-w-[75%] ${
+                        msg.sender === username
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-700 text-gray-100'
+                      }`}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between sm:space-x-4 mb-1">
+                        <span className="font-medium text-sm">{msg.sender}</span>
+                        <span className="text-xs opacity-75">
+                          {msg.timestamp.toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <div className="break-words text-sm">{msg.content}</div>
+                    </div>
                   </div>
-                  <div className="break-words">{msg.content}</div>
-                </div>
-              ))}
+                ))}
+              </div>
             </ScrollArea>
-            <div className="flex space-x-2">
-              <Input
-                placeholder="Type your message..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-                disabled={!currentRoom || !username}
-              />
-              <Button onClick={sendMessage} disabled={!currentRoom || !username}>
-                Send
-              </Button>
+            <div className="p-4 border-t border-gray-700 mt-auto">
+              <div className="flex space-x-2">
+                <Input
+                  placeholder={
+                    !username 
+                      ? "Set your username first..." 
+                      : !currentRoom 
+                      ? "Join a room to start chatting..." 
+                      : "Type your message..."
+                  }
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                  disabled={!currentRoom || !username}
+                  className="bg-gray-700 border-gray-600 text-gray-100 placeholder:text-gray-400"
+                />
+                <Button 
+                  onClick={sendMessage} 
+                  disabled={!currentRoom || !username}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700"
+                >
+                  Send
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
