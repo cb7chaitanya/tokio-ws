@@ -17,9 +17,17 @@ pub async fn handle_connection(stream: TcpStream, addr: SocketAddr, channel_mana
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
     let channel_manager = channel_manager.clone();
 
+    // Send active rooms list to new client
+    let active_rooms = channel_manager.get_active_rooms().await;
+    let rooms_message = format!("ROOM_LIST:{}", active_rooms.join(","));
+    write.send(Message::Text(rooms_message)).await.expect("Failed to send room list");
+
     tokio::spawn(async move {
         while let Some(message) = rx.recv().await {
-            write.send(message).await.expect("Failed to send message to client");
+            match write.send(message).await {
+                Ok(_) => {},
+                Err(_) => break // Exit loop if send fails
+            }
         }
     });
 
@@ -51,13 +59,22 @@ pub async fn handle_connection(stream: TcpStream, addr: SocketAddr, channel_mana
                         let room_name = parts[0].to_string();
                         let sender_name = parts[1].to_string();
                         let message_text = parts[2].to_string();
-                        let room_clone = room_name.clone();
-                        channel_manager.broadcast_message(room_name, Message::Text(format!("{}: {}", sender_name, message_text))).await;
-                        println!("Received message: {}, in room: {}, from: {}", message_text, room_clone, sender_name);
+                        channel_manager.broadcast_message(
+                            room_name,
+                            sender_name.clone(),
+                            message_text.clone(),
+                            Message::Text(format!("{}: {}", sender_name, message_text))
+                        ).await;
                     }
                 }
             }
-            _ => {}
+            Ok(_) => {},
+            Err(_) => break // Exit loop on error
         }
+    }
+
+    // Clean up when connection ends
+    if !current_channel.is_empty() {
+        channel_manager.remove_sender_from_channel(current_channel, tx).await;
     }
 } 
